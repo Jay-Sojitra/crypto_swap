@@ -1,36 +1,71 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Crypto Swap Interface
 
-## Getting Started
+A simple crypto swap interface built with Next.js and ethers.js that allows users to swap tokens between Ethereum and Binance Smart Chain networks.
 
-First, run the development server:
+## Features
 
+- Chain selection between Ethereum and BSC
+- Token swap interface with input/output fields
+- Support for multiple wallets (MetaMask, WalletConnect, Coinbase, Glow)
+- Real-time token balance fetching
+- KyberSwap API integration for swap execution
+- Error handling and loading states
+
+## Prerequisites
+
+- Node.js 18.x or later
+- npm or yarn
+- A Web3 wallet (MetaMask, WalletConnect, etc.)
+
+## Setup
+
+1. Clone the repository:
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+git clone <repository-url>
+cd crypto-swap
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+2. Install dependencies:
+```bash
+npm install
+```
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+3. Create a `.env.local` file in the root directory and add your WalletConnect Project ID:
+```
+NEXT_PUBLIC_WALLET_CONNECT_PROJECT_ID=your_project_id_here
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+4. Start the development server:
+```bash
+npm run dev
+```
 
-## Learn More
+5. Open [http://localhost:3000](http://localhost:3000) in your browser.
 
-To learn more about Next.js, take a look at the following resources:
+## Usage
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+1. Connect your wallet using the "Connect Wallet" button
+2. Select the desired chain (Ethereum or BSC)
+3. Choose the tokens you want to swap
+4. Enter the amount
+5. Click "Swap" to execute the transaction
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## Technologies Used
 
-## Deploy on Vercel
+- Next.js 14
+- TypeScript
+- Tailwind CSS
+- ethers.js
+- wagmi
+- Web3Modal
+- KyberSwap API
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## Security Notes
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- Never share your private keys or seed phrases
+- Always verify transaction details before confirming
+- Make sure you're on the correct network before swapping
+
+## License
+
+MIT 
