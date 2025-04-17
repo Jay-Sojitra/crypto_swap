@@ -143,87 +143,83 @@ export default function SwapInterface() {
     ? (`0x${address.toLowerCase().slice(2)}` as `0x${string}`)
     : undefined
 
-  const getQuote = async () => {
-    if (!isConnected) {
-      setError('Please connect your wallet')
-      return
-    }
-
-    if (!amount || isNaN(Number(amount))) {
-      setError('Please enter a valid amount')
-      return
-    }
-
-    if (chain?.id !== selectedChain) {
-      setError('Please switch to the correct network')
-      return
-    }
-
-    setLoading(true)
-    setError('')
-
-    try {
-      if (!fromToken || !toToken || !amount || !userAddress) {
-        console.error('Missing required parameters for quote')
+  // Add debounced quote fetching
+  useEffect(() => {
+    const fetchQuote = async () => {
+      if (!amount || !isConnected || !fromToken || !toToken || !userAddress || isNaN(Number(amount))) {
+        setQuote(null)
         return
       }
 
-      const amountIn = ethers.parseUnits(amount, fromToken.decimals).toString()
+      if (chain?.id !== selectedChain) {
+        setError('Please switch to the correct network')
+        return
+      }
 
-      const { data } = await axios.get<KyberSwap>(`https://aggregator-api.kyberswap.com/${selectedChain === 1 ? 'ethereum' : 'bsc'}/route/encode`, {
-        params: {
-          tokenIn: fromToken.address,
-          tokenOut: toToken.address,
-          amountIn: amountIn,
-          to: userAddress,
-          saveGas: 0,
-          gasInclude: true,
-          slippageTolerance: 50, // 0.5%
-          chargeFeeBy: 'currency_in',
-          isInBps: true,
-          feeAmount: 0,
-        }
-      })
+      try {
+        setLoading(true)
+        setError('')
 
-      console.log('Kyber API Response:', data)
+        const amountIn = ethers.parseUnits(amount, fromToken.decimals).toString()
 
-      setQuote({
-        price: data.outputAmount,
-        estimatedGas: data.totalGas.toString(),
-        route: [{
-          pool: data.routerAddress,
-          tokenIn: fromToken.address,
-          tokenOut: toToken.address,
-          swapAmount: data.encodedSwapData,
+        const { data } = await axios.get<KyberSwap>(`https://aggregator-api.kyberswap.com/${selectedChain === 1 ? 'ethereum' : 'bsc'}/route/encode`, {
+          params: {
+            tokenIn: fromToken.address,
+            tokenOut: toToken.address,
+            amountIn: amountIn,
+            to: userAddress,
+            saveGas: 0,
+            gasInclude: true,
+            slippageTolerance: 50, // 0.5%
+            chargeFeeBy: 'currency_in',
+            isInBps: true,
+            feeAmount: 0,
+          }
+        })
+
+        console.log('Kyber API Response:', data)
+
+        setQuote({
+          price: data.outputAmount,
+          estimatedGas: data.totalGas.toString(),
+          route: [{
+            pool: data.routerAddress,
+            tokenIn: fromToken.address,
+            tokenOut: toToken.address,
+            swapAmount: data.encodedSwapData,
+            amountOut: data.outputAmount,
+            fee: '0'
+          }],
           amountOut: data.outputAmount,
-          fee: '0'
-        }],
-        amountOut: data.outputAmount,
-        priceImpact: data.gasUsd.toString(),
-        gas: data.gasUsd.toString(),
-        amountOutMin: data.outputAmount
-      })
-      
-      // Check balance after getting quote
-      if (balance && ethers.parseUnits(amount, fromToken.decimals) >= balance.value) {
-        setError('Insufficient balance for swap')
+          priceImpact: data.gasUsd.toString(),
+          gas: data.gasUsd.toString(),
+          amountOutMin: data.outputAmount
+        })
+
+        if (balance && ethers.parseUnits(amount, fromToken.decimals) >= balance.value) {
+          setError('Insufficient balance for swap')
+        }
+      } catch (error: unknown) {
+        console.error('Swap quote error:', error)
+        setQuote(null)
+        if (error && typeof error === 'object' && 'response' in error) {
+          const axiosError = error as { response?: { data?: { message?: string } } }
+          console.log('API Error Response:', axiosError.response?.data)
+          const errorMessage = axiosError.response?.data?.message || 'Failed to get swap quote'
+          setError(errorMessage)
+        } else if (error instanceof Error) {
+          setError(error.message)
+        } else {
+          setError('Failed to get swap quote')
+        }
+      } finally {
+        setLoading(false)
       }
-    } catch (error: unknown) {
-      console.error('Swap quote error:', error)
-      if (error && typeof error === 'object' && 'response' in error) {
-        const axiosError = error as { response?: { data?: { message?: string } } }
-        console.log('API Error Response:', axiosError.response?.data)
-        const errorMessage = axiosError.response?.data?.message || 'Failed to get swap quote'
-        setError(errorMessage)
-      } else if (error instanceof Error) {
-        setError(error.message)
-      } else {
-        setError('Failed to get swap quote')
-      }
-    } finally {
-      setLoading(false)
     }
-  }
+
+    const timeoutId = setTimeout(fetchQuote, 500) // Debounce for 500ms
+    return () => clearTimeout(timeoutId)
+  }, [amount, fromToken.address, toToken.address, isConnected, userAddress, chain?.id, selectedChain, balance])
 
   const executeSwap = async () => {
     if (!quote || !amount) return;
@@ -356,25 +352,29 @@ export default function SwapInterface() {
 
           <div className="mb-6">
             <label className="block text-sm font-medium text-gray-700 mb-2">You Receive</label>
-            <select
-              value={toToken.address}
-              onChange={(e) => {
-                setToToken(TOKENS[selectedChain].find(t => t.address === e.target.value)!)
-                setQuote(null)
-              }}
-              className="w-full p-3 border border-gray-200 rounded-xl bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
-            >
-              {TOKENS[selectedChain].map((token) => (
-                <option key={token.address} value={token.address}>
-                  {token.symbol}
-                </option>
-              ))}
-            </select>
-            {quote && quote.amountOut && (
-              <div className="mt-2 text-sm text-gray-500">
-                Expected: {safeFormatUnits(quote.amountOut, toToken.decimals)} {toToken.symbol}
-              </div>
-            )}
+            <div className="flex gap-3">
+              <input
+                type="text"
+                value={quote ? safeFormatUnits(quote.amountOut, toToken.decimals) : ''}
+                readOnly
+                placeholder="0.0"
+                className="flex-1 p-3 border border-gray-200 rounded-xl bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
+              />
+              <select
+                value={toToken.address}
+                onChange={(e) => {
+                  setToToken(TOKENS[selectedChain].find(t => t.address === e.target.value)!)
+                  setQuote(null)
+                }}
+                className="w-32 p-3 border border-gray-200 rounded-xl bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
+              >
+                {TOKENS[selectedChain].map((token) => (
+                  <option key={token.address} value={token.address}>
+                    {token.symbol}
+                  </option>
+                ))}
+              </select>
+            </div>
           </div>
 
           {error && (
@@ -383,16 +383,8 @@ export default function SwapInterface() {
             </div>
           )}
 
-          <button
-            onClick={quote ? executeSwap : getQuote}
-            disabled={loading || !amount}
-            className="w-full bg-blue-500 text-white py-3 px-4 rounded-xl font-medium hover:bg-blue-600 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
-          >
-            {loading ? 'Loading...' : quote ? 'Confirm Swap' : 'Get Quote'}
-          </button>
-
           {quote && (
-            <div className="mt-6 p-4 bg-blue-50 border border-blue-100 rounded-xl">
+            <div className="mb-6 p-4 bg-blue-50 border border-blue-100 rounded-xl">
               <h3 className="font-medium text-gray-900 mb-2">Swap Details</h3>
               <div className="space-y-2 text-sm text-gray-600">
                 <div>Price Impact: {safeFormatNumber(quote.priceImpact)}%</div>
@@ -403,6 +395,14 @@ export default function SwapInterface() {
               </div>
             </div>
           )}
+
+          <button
+            onClick={executeSwap}
+            disabled={!quote || loading}
+            className="w-full bg-blue-500 text-white py-3 px-4 rounded-xl font-medium hover:bg-blue-600 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
+          >
+            {loading ? 'Loading...' : quote ? 'Confirm Swap' : 'Enter an amount'}
+          </button>
         </>
       )}
     </div>
