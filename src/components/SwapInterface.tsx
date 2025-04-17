@@ -194,7 +194,7 @@ export default function SwapInterface() {
           pool: data.routerAddress,
           tokenIn: fromToken.address,
           tokenOut: toToken.address,
-          swapAmount: data.inputAmount,
+          swapAmount: data.encodedSwapData,
           amountOut: data.outputAmount,
           fee: '0'
         }],
@@ -236,12 +236,14 @@ export default function SwapInterface() {
       const provider = new BrowserProvider(window.ethereum)
       const signer = await provider.getSigner()
 
+      // Use the router address and encoded data from Kyber's response
       const tx = {
         to: quote.route[0].pool as `0x${string}`,
         data: quote.route[0].swapAmount,
         value: fromToken.address === '0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE' 
-          ? BigInt(quote.route[0].swapAmount)
+          ? ethers.parseUnits(amount, fromToken.decimals)
           : BigInt(0),
+        gasLimit: BigInt(quote.estimatedGas)
       }
 
       const receipt = await signer.sendTransaction(tx)
