@@ -117,8 +117,8 @@ export default function SwapInterface() {
   // Get balance of the 'from' token
   const { data: balance } = useBalance({
     address,
-    token: fromToken.address === '0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE' 
-      ? undefined 
+    token: fromToken.address === '0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE'
+      ? undefined
       : (fromToken.address as `0x${string}`),
     chainId: selectedChain,
   })
@@ -138,8 +138,40 @@ export default function SwapInterface() {
     setError('')
   }
 
+  const handleFromTokenChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const newFromToken = TOKENS[selectedChain].find(t => t.address === e.target.value)
+    if (newFromToken) {
+      // If the new fromToken is the same as toToken, switch toToken to a different one
+      if (newFromToken.address === toToken.address) {
+        const differentToken = TOKENS[selectedChain].find(t =>
+          t.address !== newFromToken.address
+        )
+        setToToken(differentToken || TOKENS[selectedChain][0])
+      }
+      setFromToken(newFromToken)
+      setQuote(null)
+      setError('')
+    }
+  }
+
+  const handleToTokenChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const newToToken = TOKENS[selectedChain].find(t => t.address === e.target.value)
+    if (newToToken) {
+      // If the new toToken is the same as fromToken, switch fromToken to a different one
+      if (newToToken.address === fromToken.address) {
+        const differentToken = TOKENS[selectedChain].find(t =>
+          t.address !== newToToken.address
+        )
+        setFromToken(differentToken || TOKENS[selectedChain][0])
+      }
+      setToToken(newToToken)
+      setQuote(null)
+      setError('')
+    }
+  }
+
   // Update address handling with proper hex check and type assertion
-  const userAddress = address && ethers.isAddress(address) 
+  const userAddress = address && ethers.isAddress(address)
     ? (`0x${address.toLowerCase().slice(2)}` as `0x${string}`)
     : undefined
 
@@ -148,17 +180,19 @@ export default function SwapInterface() {
     const fetchQuote = async () => {
       if (!amount || !isConnected || !fromToken || !toToken || !userAddress || isNaN(Number(amount))) {
         setQuote(null)
+        setError('')  // Clear error when conditions aren't met
         return
       }
 
       if (chain?.id !== selectedChain) {
         setError('Please switch to the correct network')
+        setQuote(null)
         return
       }
 
       try {
         setLoading(true)
-        setError('')
+        setError('')  // Clear error when starting new quote fetch
 
         const amountIn = ethers.parseUnits(amount, fromToken.decimals).toString()
 
@@ -222,38 +256,61 @@ export default function SwapInterface() {
   }, [amount, fromToken.address, toToken.address, isConnected, userAddress, chain?.id, selectedChain, balance])
 
   const executeSwap = async () => {
-    if (!quote || !amount) return;
+    if (!quote || !amount || !userAddress) return;
 
     try {
       if (!window.ethereum) {
         throw new Error('Ethereum provider not found')
       }
 
+      // Check balance before proceeding
+      if (balance && ethers.parseUnits(amount, fromToken.decimals) > balance.value) {
+        throw new Error(`Insufficient ${fromToken.symbol} balance`)
+      }
+
       const provider = new BrowserProvider(window.ethereum)
       const signer = await provider.getSigner()
 
-      // Use the router address and encoded data from Kyber's response
+      // Proceed with swap transaction
+      console.log('quote',quote);
       const tx = {
         to: quote.route[0].pool as `0x${string}`,
         data: quote.route[0].swapAmount,
-        value: fromToken.address === '0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE' 
+        value: fromToken.address === '0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE'
           ? ethers.parseUnits(amount, fromToken.decimals)
           : BigInt(0),
         gasLimit: BigInt(quote.estimatedGas)
       }
 
       const receipt = await signer.sendTransaction(tx)
-      console.log('Swap transaction successful:', receipt)
+      console.log('Swap transaction submitted:', receipt.hash)
       
+      // Wait for transaction confirmation
+      setLoading(true)
+      const confirmation = await receipt.wait()
+      console.log('Swap transaction confirmed:', confirmation)
+
       setQuote(null)
       setAmount('')
+      setError('')
     } catch (error) {
       console.error('Swap execution error:', error)
       if (error instanceof Error) {
-        setError(`Failed to execute swap: ${error.message}`)
+        // Handle specific error cases
+        if (error.message.includes('insufficient funds')) {
+          setError('Insufficient funds to cover gas fees')
+        } else if (error.message.includes('user rejected')) {
+          setError('Transaction was rejected')
+        } else if (error.message.includes('gas required exceeds')) {
+          setError('Transaction would fail - likely due to price impact or slippage')
+        } else {
+          setError(`Transaction failed: ${error.message}`)
+        }
       } else {
-        setError('Failed to execute swap')
+        setError('Transaction failed - please try again')
       }
+    } finally {
+      setLoading(false)
     }
   }
 
@@ -282,6 +339,8 @@ export default function SwapInterface() {
       return '0'
     }
   }
+
+
 
   if (!mounted) {
     return null
@@ -319,21 +378,24 @@ export default function SwapInterface() {
           </div>
 
           <div className="mb-6">
-            <label className="block text-sm font-medium text-gray-700 mb-2">You Pay</label>
+            <label className="block text-sm font-medium text-gray-700 mb-2">From</label>
             <div className="flex gap-3">
               <input
                 type="text"
                 value={amount}
-                onChange={(e) => setAmount(e.target.value)}
+                onChange={(e) => {
+                  setAmount(e.target.value)
+                  if (!e.target.value) {
+                    setError('')
+                    setQuote(null)
+                  }
+                }}
                 placeholder="0.0"
                 className="flex-1 p-3 border border-gray-200 rounded-xl bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
               />
               <select
                 value={fromToken.address}
-                onChange={(e) => {
-                  setFromToken(TOKENS[selectedChain].find(t => t.address === e.target.value)!)
-                  setQuote(null)
-                }}
+                onChange={handleFromTokenChange}
                 className="w-32 p-3 border border-gray-200 rounded-xl bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
               >
                 {TOKENS[selectedChain].map((token) => (
@@ -351,7 +413,7 @@ export default function SwapInterface() {
           </div>
 
           <div className="mb-6">
-            <label className="block text-sm font-medium text-gray-700 mb-2">You Receive</label>
+            <label className="block text-sm font-medium text-gray-700 mb-2">To</label>
             <div className="flex gap-3">
               <input
                 type="text"
@@ -362,10 +424,7 @@ export default function SwapInterface() {
               />
               <select
                 value={toToken.address}
-                onChange={(e) => {
-                  setToToken(TOKENS[selectedChain].find(t => t.address === e.target.value)!)
-                  setQuote(null)
-                }}
+                onChange={handleToTokenChange}
                 className="w-32 p-3 border border-gray-200 rounded-xl bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
               >
                 {TOKENS[selectedChain].map((token) => (
@@ -398,13 +457,19 @@ export default function SwapInterface() {
 
           <button
             onClick={executeSwap}
-            disabled={!quote || loading}
+            disabled={!quote || loading || (balance && ethers.parseUnits(amount || '0', fromToken.decimals) > balance.value)}
             className="w-full bg-blue-500 text-white py-3 px-4 rounded-xl font-medium hover:bg-blue-600 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
           >
-            {loading ? 'Loading...' : quote ? 'Confirm Swap' : 'Enter an amount'}
+            {loading ? 'Loading...' : 
+             !quote ? 'Enter an amount' :
+             (balance && ethers.parseUnits(amount || '0', fromToken.decimals) > balance.value) ? 
+             `Insufficient ${fromToken.symbol} balance` : 
+             'Confirm Swap'}
           </button>
         </>
       )}
     </div>
   )
 }
+
+
