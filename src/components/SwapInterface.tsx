@@ -1,19 +1,18 @@
 'use client'
 
 import React, { useState, useEffect } from 'react'
-import { useAccount, useNetwork, useSwitchNetwork, useConnect, useBalance } from 'wagmi'
+import { useAccount, useNetwork, useSwitchNetwork, useConnect, useBalance, useDisconnect } from 'wagmi'
 import { ethers, BrowserProvider } from 'ethers'
 import axios from 'axios'
 import { useIsMounted } from '@/hooks/useIsMounted'
 import type { EIP1193Provider } from 'viem'
 // import type { Address } from 'wagmi'
 
-// Add window ethereum type with proper typing
-declare global {
-  interface Window {
-    ethereum?: EIP1193Provider
-  }
+interface CustomWindow extends Window {
+  ethereum?: EIP1193Provider;
 }
+
+declare const window: CustomWindow;
 
 interface Token {
   address: string;
@@ -113,6 +112,7 @@ export default function SwapInterface() {
   const { chain } = useNetwork()
   const { switchNetwork } = useSwitchNetwork()
   const { connect, connectors } = useConnect()
+  const { disconnect } = useDisconnect()
 
   // Get balance of the 'from' token
   const { data: balance } = useBalance({
@@ -340,27 +340,46 @@ export default function SwapInterface() {
     }
   }
 
-
-
   if (!mounted) {
     return null
   }
 
   return (
     <div className="max-w-md mx-auto">
-      {!isConnected ? (
-        <div className="space-y-4">
-          {connectors.map((connector) => (
+      <div className="mb-6">
+        {isConnected ? (
+          <div className="flex items-center justify-between p-3 bg-white rounded-xl border border-gray-200 shadow-sm">
+            <div className="flex items-center space-x-3">
+              <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+              <span className="text-sm font-medium text-gray-900">
+                {address ? `${address.slice(0, 6)}...${address.slice(-4)}` : 'Connected'}
+              </span>
+            </div>
             <button
-              key={connector.id}
-              onClick={() => connect({ connector })}
-              className="w-full bg-blue-500 text-white py-3 px-4 rounded-xl font-medium hover:bg-blue-600 transition-colors"
+              onClick={() => disconnect()}
+              className="text-sm text-gray-500 hover:text-gray-700 font-medium bg-gray-50 px-3 py-1 rounded-lg transition-colors"
             >
-              Connect with {connector.name}
+              Disconnect
             </button>
-          ))}
-        </div>
-      ) : (
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {connectors.map((connector) => (
+              <button
+                key={connector.id}
+                onClick={() => connect({ connector })}
+                className="w-full bg-blue-500 text-white py-3 px-4 rounded-xl font-medium hover:bg-blue-600 transition-colors"
+                disabled={!connector.ready}
+              >
+                Connect with {connector.name}
+                {!connector.ready && ' (unsupported)'}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {isConnected && (
         <>
           <div className="mb-6">
             <label className="block text-sm font-medium text-gray-700 mb-2">Select Network</label>
